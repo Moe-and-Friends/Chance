@@ -133,7 +133,7 @@ async def on_message(message):
             # Get the roles for comparison
 
             # Don't mute any excluded roles (yes this is inefficient)
-            if not is_user_safe:
+            if is_user_safe:
 
                 await message.reply(settings.get('NANA_COMRADE_LETHAL_MESSAGE').format(
                     time=display_time(effect_time, 3)
