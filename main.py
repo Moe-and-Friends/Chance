@@ -159,7 +159,7 @@ async def on_message(message):
             if is_user_safe:
                 await message.reply(settings.get('NANA_COMRADE_SAFE_MESSAGE'))
             else:
-                await message.reply(settings.get('NANA_CAPITALIST_LETHAL_MESSAGE'))
+                await message.reply(settings.get('NANA_CAPITALIST_SAFE_MESSAGE'))
 
 
 countdown_to_unmute.start()
