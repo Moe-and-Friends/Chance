@@ -108,7 +108,7 @@ async def on_message(message):
         Ayumi.debug("Ignoring message as it is a bot message")
         return
 
-    if not message.guild.id in settings.get("DISCORD_GUILD_IDS"):
+    if message.guild.id not in settings.get("DISCORD_GUILD_IDS"):
         Ayumi.debug("Ignoring message sent as it is from external guild with id {id}".format(id=message.guild.id))
         return
 
