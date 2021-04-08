@@ -10,7 +10,7 @@ from discord.ext.tasks import loop
 from functools import partial
 
 TIME_INTERVALS = (
-    ('days', 3600),
+    ('days', 1440),
     ('hours', 60),
     ('minutes', 1),
 )
