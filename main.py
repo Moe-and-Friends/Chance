@@ -1,8 +1,10 @@
+import pprint
 import asyncio
 import datetime
 import discord
 import random
 
+from ayumi import Ayumi
 from collections import defaultdict
 from config import settings
 from discord.ext.tasks import loop
@@ -50,6 +52,7 @@ COMRADE_ROLE_IDS = set(settings.get("COMRADE_ROLE_IDS", []))
 # Roles added to users when they get unlucky with Russian roulette.
 LETHAL_ROLE_IDS = set(settings.get("LETHAL_ROLE_IDS", []))
 
+
 def display_time(minutes, granularity=2):
     """
     Converts the minutes we have into an English string to display to users.
@@ -79,6 +82,9 @@ async def countdown_to_unmute():
     await client.wait_until_ready()
 
     now = datetime.datetime.now()
+    Ayumi.debug("Background loop processing potential unmute jobs at {time} for: {users}".format(
+        time=now.strftime("%c"), users=[x[0].author.name for x in muted_users]
+    ))
 
     for entry in [x for x in muted_users]:
         if now > entry[1]:  # If the current time is greater than the predetermined ban time.
@@ -87,41 +93,48 @@ async def countdown_to_unmute():
             author = guild.get_member(entry[0].author.id)
             roles = [guild.get_role(rid) for rid in LETHAL_ROLE_IDS]
 
-            print("time has passed for user {}".format(entry[0].author.id))
+            Ayumi.info("Time has passed for user {id} {name}, removing role(s).".format(id=entry[0].author.id, name=entry[0].author.name))
             for role in roles:
                 await author.remove_roles(role, atomic=True)
-            print("Removed role?")
             muted_users.remove(entry)
 
-import pprint
 
 @ client.event
 async def on_message(message):
 
+    Ayumi.debug("Processing message: [{author}@{id}: {content}".format(author=message.author.name, id=message.id, content=message.content))
+
     # Ignore messages sent by other bots, including oneself.
     if message.author.bot:
+        Ayumi.debug("Ignoring message as it is a bot message")
         return
 
     if not message.channel.id in settings.get("DISCORD_GUILD_IDS"):
+        Ayumi.debug("Ignoring message sent as it is from external guild with id {id}".format(id=message.guild.id))
         return
 
     if any(emoji in message.content for emoji in TRIGGERS):
 
+        Ayumi.info("Found emoji in message {id}, proceeding to process.".format(id=message.id), color=Ayumi.GREEN)
+
         chances_key = random.randint(0, CHANCES_SELECT_RANGE)
+        Ayumi.debug("{id}: Generated chances key with value {key}".format(id=message.id, key=chances_key))
         effect_time = CHANCES[chances_key]()
+        Ayumi.info("{id}: Generated effect time at {mins} minutes".format(id=message.id, mins=effect_time))
 
         exclude_roles = [message.guild.get_role(sid) for sid in COMRADE_ROLE_IDS]
         author_roles = message.author.roles
         roles_to_add = [message.guild.get_role(rid) for rid in LETHAL_ROLE_IDS]
 
         is_user_safe = any(role in author_roles for role in exclude_roles)
+        Ayumi.info("{id}: User safety: {safe}".format(id=message.id, safe=is_user_safe))
 
         if effect_time > 0:
 
             # Get the roles for comparison
 
             # Don't mute any excluded roles (yes this is inefficient)
-            if is_user_safe:
+            if not is_user_safe:
 
                 await message.reply(settings.get('NANA_COMRADE_LETHAL_MESSAGE').format(
                     time=display_time(effect_time, 3)
@@ -134,8 +147,9 @@ async def on_message(message):
                     await message.author.add_roles(role, atomic=True)
 
                 now = datetime.datetime.now()
-                uneffect_time = now + datetime.timedelta(seconds=5)
+                uneffect_time = now + datetime.timedelta(minutes=effect_time)
                 muted_users.add((message, uneffect_time))
+                Ayumi.info("Adding lethal roles to user {id} ({name}) at {time}".format(id=message.author.id, name=message.author.name, time=now.strftime("%c")))
 
                 await message.reply(settings.get('NANA_CAPITALIST_LETHAL_MESSAGE').format(
                     time=display_time(effect_time, 3)
