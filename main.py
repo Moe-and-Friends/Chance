@@ -1,4 +1,3 @@
-import pprint
 import asyncio
 import datetime
 import discord
