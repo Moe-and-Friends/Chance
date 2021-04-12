@@ -10,46 +10,54 @@ from discord.ext.tasks import loop
 from functools import partial
 
 TIME_INTERVALS = (
+    ('weeks', 10080),
     ('days', 1440),
     ('hours', 60),
     ('minutes', 1),
 )
 
-CHANCES = defaultdict(lambda: lambda: 0)
 
-CHANCES_INTERVALS = sorted(settings.get("CHANCES_INTERVALS"))
-CHANCES_INTERVALS_START_AT_ZERO = settings.get("CHANCES_INTERVALS_ALL_START_AT_ZERO")
-
-# Load the Russian Roulette chances
-# Use a partial function because lambdas are for loop scoped.
-
-
-def get_mute_range(*args):
-    try:
-        return random.randint(args[0], args[1])
-    except:
-        return random.randint(0, args[0])
+def convert_interval_str_to_minutes(input):
+    time = int("".join(filter(str.isdigit, input)))
+    if input.endswith("m"):
+        return time
+    elif input.endswith("h"):
+        return time * 60
+    elif input.endswith("d"):
+        return time * 1440
+    elif input.endswith("w"):
+        return time * 10080
 
 
-for i in range(0, len(CHANCES_INTERVALS)):
-    # Nested to handle the zero case
-    if i == 0:
-        CHANCES[0] = partial(get_mute_range, CHANCES_INTERVALS[0])
+def select_gacha_time():
+    """
+    Returns the time in minutes. Defaults to 0.
+    """
+    intervals_raw = settings.get("INTERVALS")
+    if not intervals_raw:
+        return 0
+
+    weights = list()
+    intervals = list()
+
+    for interval_raw in intervals_raw:
+        weights.append(int("".join(filter(str.isdigit, interval_raw['probability']))))
+        intervals.append((
+            convert_interval_str_to_minutes(interval_raw['lower']),
+            convert_interval_str_to_minutes(interval_raw['upper']))
+        )
+
+    if sum(weights) != 100:
+        Ayumi.warning("Configuration for probabilities does not sum to 100%", color=Ayumi.LRED)
+        return 0
     else:
-        if CHANCES_INTERVALS_START_AT_ZERO:
-            CHANCES[i] = partial(get_mute_range, CHANCES_INTERVALS[i])
-        else:
-            CHANCES[i] = partial(get_mute_range, CHANCES_INTERVALS[i-1], CHANCES_INTERVALS[i])
-
-# Store this here because DD will cache calls otherwise
-CHANCES_SELECT_RANGE = len(CHANCES) * settings.get('CHANCES_INVERTED_MULTIPLIER')
-
-# Emojis that will trigger the bot to fire.
-TRIGGERS = set(settings.get("TRIGGERS", []))
-# Roles that are excluded from receiving LETHAL_ROLE_IDSs
-COMRADE_ROLE_IDS = set(settings.get("COMRADE_ROLE_IDS", []))
-# Roles added to users when they get unlucky with Russian roulette.
-LETHAL_ROLE_IDS = set(settings.get("LETHAL_ROLE_IDS", []))
+        try:
+            interval = random.choices(intervals, weights)[0]
+            minutes = random.randint(interval[0], interval[1])
+            Ayumi.info("Generated a roll time of {} minutes".format(minutes))
+            return minutes
+        except:
+            return 0
 
 
 def display_time(minutes, granularity=2):
@@ -90,7 +98,7 @@ async def countdown_to_unmute():
 
             guild = client.get_guild(entry[0].guild.id)
             author = guild.get_member(entry[0].author.id)
-            roles = [guild.get_role(rid) for rid in LETHAL_ROLE_IDS]
+            roles = [guild.get_role(rid) for rid in settings.get("LETHAL_ROLE_IDS", [])]
 
             Ayumi.info("Time has passed for user {id} {name}, removing role(s).".format(id=entry[0].author.id, name=entry[0].author.name))
             for role in roles:
@@ -112,18 +120,16 @@ async def on_message(message):
         Ayumi.debug("Ignoring message sent as it is from external guild with id {id}".format(id=message.guild.id))
         return
 
-    if any(emoji in message.content for emoji in TRIGGERS):
+    if any(emoji in message.content for emoji in settings.get('TRIGGERS', [])):
 
         Ayumi.info("Found emoji in message {id}, proceeding to process.".format(id=message.id), color=Ayumi.GREEN)
 
-        chances_key = random.randint(0, CHANCES_SELECT_RANGE)
-        Ayumi.debug("{id}: Generated chances key with value {key}".format(id=message.id, key=chances_key))
-        effect_time = CHANCES[chances_key]()
+        effect_time = select_gacha_time()
         Ayumi.info("{id}: Generated effect time at {mins} minutes".format(id=message.id, mins=effect_time))
 
-        exclude_roles = [message.guild.get_role(sid) for sid in COMRADE_ROLE_IDS]
+        exclude_roles = [message.guild.get_role(sid) for sid in settings.get('COMRADE_ROLE_IDS', [])]
         author_roles = message.author.roles
-        roles_to_add = [message.guild.get_role(rid) for rid in LETHAL_ROLE_IDS]
+        roles_to_add = [message.guild.get_role(rid) for rid in settings.get('LETHAL_ROLE_IDS', [])]
 
         is_user_safe = any(role in author_roles for role in exclude_roles)
         Ayumi.info("{id}: User safety: {safe}".format(id=message.id, safe=is_user_safe))
@@ -162,5 +168,6 @@ async def on_message(message):
                 await message.reply(settings.get('NANA_CAPITALIST_SAFE_MESSAGE'))
 
 
-countdown_to_unmute.start()
-client.run(settings.get("DISCORD_TOKEN"))
+if __name__ == "__main__":
+    countdown_to_unmute.start()
+    client.run(settings.get("DISCORD_TOKEN"))
