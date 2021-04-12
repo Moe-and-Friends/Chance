@@ -195,4 +195,4 @@ Thumbs.db
 config/settings.toml
 
 ## App
-muted_users.data
+data/muted_users.data

@@ -3,6 +3,7 @@ import datetime
 import discord
 import random
 import shelve
+import os
 
 from ayumi import Ayumi
 from collections import defaultdict
@@ -87,7 +88,9 @@ intents = discord.Intents.default()
 intents.members = True
 client = discord.Client(intents=intents)
 
-muted_users = shelve.open("muted_users.data", writeback=True)  # For tracking when users get muted.
+if not os.path.exists("data"):
+    os.makedirs("data")
+muted_users = shelve.open("data/muted_users.data", writeback=True)  # For tracking when users get muted.
 
 
 @ loop(seconds=5)
