@@ -193,3 +193,6 @@ Thumbs.db
 ### Dynaconf ###
 .settings.toml
 config/settings.toml
+
+## App
+muted_users.data

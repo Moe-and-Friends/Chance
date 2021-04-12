@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import discord
 import random
+import shelve
 
 from ayumi import Ayumi
 from collections import defaultdict
@@ -9,24 +10,29 @@ from config import settings
 from discord.ext.tasks import loop
 from functools import partial
 
+WEEKS_IN_MINUTES = 10080
+DAYS_IN_MINUTES = 1440
+HOURS_IN_MINUTES = 60
+MINUTES_IN_MINUTES = 1
+
 TIME_INTERVALS = (
-    ('weeks', 10080),
-    ('days', 1440),
-    ('hours', 60),
-    ('minutes', 1),
+    ('weeks', WEEKS_IN_MINUTES),
+    ('days', DAYS_IN_MINUTES),
+    ('hours', HOURS_IN_MINUTES),
+    ('minutes', MINUTES_IN_MINUTES),
 )
 
 
 def convert_interval_str_to_minutes(input):
     time = int("".join(filter(str.isdigit, input)))
     if input.endswith("m"):
-        return time
+        return time * MINUTES_IN_MINUTES # lol
     elif input.endswith("h"):
-        return time * 60
+        return time * HOURS_IN_MINUTES 
     elif input.endswith("d"):
-        return time * 1440
+        return time * DAYS_IN_MINUTES
     elif input.endswith("w"):
-        return time * 10080
+        return time * WEEKS_IN_MINUTES
 
 
 def select_gacha_time():
@@ -81,7 +87,7 @@ intents = discord.Intents.default()
 intents.members = True
 client = discord.Client(intents=intents)
 
-muted_users = set()  # For tracking when users get muted.
+muted_users = shelve.open("muted_users.data", writeback=True)  # For tracking when users get muted.
 
 
 @ loop(seconds=5)
@@ -90,20 +96,20 @@ async def countdown_to_unmute():
 
     now = datetime.datetime.now()
     Ayumi.debug("Background loop processing potential unmute jobs at {time} for: {users}".format(
-        time=now.strftime("%c"), users=[x[0].author.name for x in muted_users]
+        time=now.strftime("%c"), users=[x['author_name'] for x in muted_users.values()]
     ))
 
-    for entry in [x for x in muted_users]:
-        if now > entry[1]:  # If the current time is greater than the predetermined ban time.
+    for uid, mdata in dict(muted_users).items():
+        if now > mdata['expiry']:  # If the current time is greater than the predetermined ban time.
 
-            guild = client.get_guild(entry[0].guild.id)
-            author = guild.get_member(entry[0].author.id)
+            guild = client.get_guild(mdata['gid'])
+            author = guild.get_member(int(uid))
             roles = [guild.get_role(rid) for rid in settings.get("LETHAL_ROLE_IDS", [])]
 
-            Ayumi.info("Time has passed for user {id} {name}, removing role(s).".format(id=entry[0].author.id, name=entry[0].author.name))
+            Ayumi.info("Time has passed for user {id} {name}, removing role(s).".format(id=int(uid), name=mdata['author_name']))
             for role in roles:
                 await author.remove_roles(role, atomic=True)
-            muted_users.remove(entry)
+            muted_users.pop(uid)
 
 
 @ client.event
@@ -153,7 +159,7 @@ async def on_message(message):
 
                 now = datetime.datetime.now()
                 uneffect_time = now + datetime.timedelta(minutes=effect_time)
-                muted_users.add((message, uneffect_time))
+                muted_users[str(message.author.id)] = {"expiry": uneffect_time, "gid": message.guild.id, "mid": message.id, "author_name": message.author.name}
                 Ayumi.info("Adding lethal roles to user {id} ({name}) at {time}".format(id=message.author.id, name=message.author.name, time=now.strftime("%c")))
 
                 await message.reply(settings.get('NANA_CAPITALIST_LETHAL_MESSAGE').format(
